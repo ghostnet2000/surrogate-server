@@ -15,7 +15,7 @@ A simple proxy server built with `aiohttp`, designed to route incoming requests 
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/yourusername/surrogate-server.git
+   git clone https://github.com/ghostnet2000/surrogate-server.git
    cd surrogate-server
    ```
 
