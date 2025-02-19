@@ -9,57 +9,27 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_remote_url(request, download_port, script_port, cmd_port):
+# Mapping of path prefixes to their corresponding ports
+PATH_TO_PORT = {}
+
+def get_remote_url(request):
     """
     Generates the appropriate remote URL based on the request path.
     
     Args:
         request: The incoming HTTP request.
-        download_port: Port for /download requests.
-        script_port: Port for /script requests.
-        cmd_port: Port for /cmd requests.
     
     Returns:
         str: The generated remote URL.
     """
-    path = request.path
-
-    if path.startswith("/download"):
-        path = path.replace("/download", "")
-        return f"http://localhost:{download_port}{path}"
-    elif path.startswith("/script"):
-        return f"http://localhost:{script_port}{path}"
-    elif path.startswith("/cmd"):
-        return f"http://localhost:{cmd_port}{path}"
-    else:
-        return f"http://localhost:8080"  # Default fallback
-
-async def handle_request(request, download_port, script_port, cmd_port):
-    """
-    Handles the incoming request and proxies it to the appropriate remote server.
+    # Check if the path matches any of the keys in the dictionary
+    for path_prefix, port in PATH_TO_PORT.items():
+        if request.path.startswith(path_prefix):
+            path = request.path.replace(path_prefix, "")
+            return f"http://localhost:{port}{path}"
     
-    Args:
-        request: The incoming HTTP request.
-        download_port: Port for /download requests.
-        script_port: Port for /script requests.
-        cmd_port: Port for /cmd requests.
-    
-    Returns:
-        web.Response: The response returned to the client.
-    """
-    remote_url = get_remote_url(request, download_port, script_port, cmd_port)
-
-    logger.info(f"Processing request: {request.method} {request.path} with query {request.query}")
-
-    async with request.app["proxy_pool"].request(
-        request.method, remote_url, headers=request.headers, params=request.query
-    ) as resp:
-        body = await resp.read()
-        return web.Response(
-            status=resp.status,
-            body=body,
-            headers=resp.headers
-        )
+    # Default fallback if no matching path is found
+    return "http://localhost:8080"
 
 async def create_app(download_port, script_port, cmd_port):
     """
@@ -73,6 +43,14 @@ async def create_app(download_port, script_port, cmd_port):
     Returns:
         web.Application: The configured aiohttp application.
     """
+    global PATH_TO_PORT  # Access the global dictionary to set it here
+    # Assign the port values to the dictionary in the main
+    PATH_TO_PORT = {
+        "/download": download_port,
+        "/script": script_port,
+        "/cmd": cmd_port
+    }
+
     app = web.Application()
 
     # Create an HTTP connector for making proxy requests
@@ -86,9 +64,33 @@ async def create_app(download_port, script_port, cmd_port):
     aiohttp_cors.setup(app)
 
     # Define routes
-    app.router.add_route("*", "/{tail:.*}", lambda request: handle_request(request, download_port, script_port, cmd_port))
+    app.router.add_route("*", "/{tail:.*}", lambda request: handle_request(request))
 
     return app
+
+async def handle_request(request):
+    """
+    Handles the incoming request and proxies it to the appropriate remote server.
+    
+    Args:
+        request: The incoming HTTP request.
+    
+    Returns:
+        web.Response: The response returned to the client.
+    """
+    remote_url = get_remote_url(request)
+
+    logger.info(f"Processing request: {request.method} {request.path} with query {request.query}")
+
+    async with request.app["proxy_pool"].request(
+        request.method, remote_url, headers=request.headers, params=request.query
+    ) as resp:
+        body = await resp.read()
+        return web.Response(
+            status=resp.status,
+            body=body,
+            headers=resp.headers
+        )
 
 if __name__ == "__main__":
     # Setup argparse to accept command-line arguments for ports
